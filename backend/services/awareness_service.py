@@ -95,8 +95,9 @@ for category in HEALTH_CATEGORIES:
             "color": "#FF9800"
         }]
 
+
 def get_color_for_category(category):
-    """Return a consistent color for each category"""
+    """Return a consistent color for each category."""
     colors = {
         "Nutrition": "#4CAF50",      # Green
         "Exercise": "#2196F3",       # Blue
@@ -113,66 +114,73 @@ def get_color_for_category(category):
     }
     return colors.get(category, "#FF9800")  # Default to amber if category not found
 
+
 def generate_awareness_content(category, count=3):
-    """Generate health awareness content using OpenAI"""
+    """Generate health awareness content using OpenAI."""
     cache_key = f"{category}_{count}"
-    
+
     # Check cache first
     if cache_key in _content_cache and datetime.now() < _cache_expiry.get(cache_key, datetime.now()):
         logger.info(f"Returning cached content for {category}")
         return _content_cache[cache_key]
-    
+
     try:
         # Define the prompt for GPT-4
         prompt = f"""
-        Generate {count} informative and evidence-based health awareness articles about {category}.
-        For each article, provide:
-        1. An attention-grabbing title (5-8 words)
-        2. Informative content (100-150 words) with practical advice
-        3. Make the content culturally sensitive and appropriate for diverse populations
-        4. Ensure medical accuracy and avoid overly technical language
-        
-        Format as a JSON array with objects containing 'title' and 'content' fields.
-        """
-        
+Generate {count} informative and evidence-based health awareness articles about {category}.
+For each article, provide:
+1. An attention-grabbing title (5-8 words)
+2. Informative content (100-150 words) with practical advice
+3. Make the content culturally sensitive and appropriate for diverse populations
+4. Ensure medical accuracy and avoid overly technical language
+
+Format your entire response as a JSON array of objects, where each object has exactly these two keys:
+- "title": "<your title here>"
+- "content": "<the article body here>"
+"""
+
         # Initialize OpenAI client
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
-        # Call the OpenAI API with timeout handling
+
+        # Call the OpenAI API (no response_format parameter)
         start_time = time.time()
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are a health educator providing accurate, helpful health information."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a health educator providing accurate, helpful health information."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
             ],
-            response_format={"type": "json_object"},
             max_tokens=1500,
             timeout=10  # 10 second timeout
         )
         elapsed_time = time.time() - start_time
         logger.info(f"OpenAI API call for {category} took {elapsed_time:.2f} seconds")
-        
-        # Parse the response
-        response_content = json.loads(response.choices[0].message.content)
-        
-        # Ensure we have the expected structure
-        if "articles" not in response_content and isinstance(response_content, list):
-            # If it's a list, assume it's the articles directly
+
+        # Parse the raw string as JSON
+        raw = response.choices[0].message.content
+        response_content = json.loads(raw)
+
+        # Normalize into a list of article dicts
+        if isinstance(response_content, list):
             articles = response_content
-        elif "articles" in response_content:
+        elif isinstance(response_content, dict) and "articles" in response_content:
             articles = response_content["articles"]
         else:
-            # Try to find any list in the response
-            for key, value in response_content.items():
-                if isinstance(value, list) and len(value) > 0:
-                    articles = value
+            # Fallback: look for any top‐level list
+            for val in response_content.values():
+                if isinstance(val, list):
+                    articles = val
                     break
             else:
-                # Fallback if structure is unexpected
                 raise ValueError("Unexpected response structure from OpenAI")
-        
-        # Format the articles with category and color
+
+        # Attach category and color to each article
         formatted_articles = []
         for article in articles:
             formatted_articles.append({
@@ -181,30 +189,30 @@ def generate_awareness_content(category, count=3):
                 "category": category,
                 "color": get_color_for_category(category)
             })
-        
+
         # Cache the results
         _content_cache[cache_key] = formatted_articles
         _cache_expiry[cache_key] = datetime.now() + timedelta(seconds=CACHE_DURATION)
-        
         return formatted_articles
-        
+
     except Exception as e:
         logger.error(f"Error generating awareness content for {category}: {str(e)}")
-        
-        # Return fallback content for the category
+        # Return fallback content if anything goes wrong
         return FALLBACK_CONTENT.get(category, FALLBACK_CONTENT["Preventive Care"])
 
+
 def get_all_categories():
-    """Return list of all health categories"""
+    """Return list of all health categories."""
     return HEALTH_CATEGORIES
 
+
 def get_random_awareness_content(count=5):
-    """Get random awareness content across categories"""
+    """Get random awareness content across categories."""
     import random
-    
+
     result = []
     categories = random.sample(HEALTH_CATEGORIES, min(count, len(HEALTH_CATEGORIES)))
-    
+
     for category in categories:
         try:
             # Get just one article per category for variety
@@ -216,8 +224,9 @@ def get_random_awareness_content(count=5):
             # Add fallback content
             fallback = FALLBACK_CONTENT.get(category, [])[0:1]
             result.extend(fallback)
-    
+
     return result
+
 
 # For testing purposes
 if __name__ == "__main__":
